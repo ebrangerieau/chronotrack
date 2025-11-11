@@ -1,0 +1,78 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChronoTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#13ec5b",
+              "primary-dark": "#0fa441",
+              "background-light": "#f6f8f6",
+              "background-dark": "#102216",
+              "text-light": "#0d1b12",
+              "text-dark": "#e0e6e2",
+              "text-subtle-light": "#6b7f73",
+              "text-subtle-dark": "#8a9c90",
+              "card-light": "#ffffff",
+              "card-dark": "#1a3123",
+              "border-light": "#e3e8e4",
+              "border-dark": "#2a4d37",
+              positive: "#16a34a",
+              negative: "#dc2626",
+              warning: "#f59e0b",
+              info: "#3b82f6",
+            },
+            fontFamily: {
+              display: ["Inter", "sans-serif"],
+              monospace: ["Roboto Mono", "monospace"],
+            },
+            borderRadius: {
+              DEFAULT: "0.5rem",
+              lg: "0.75rem",
+              xl: "1rem",
+              full: "9999px",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        min-height: 100dvh;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-background-light dark:bg-background-dark">
+    <div id="root"></div>
+  </body>
+</html>
