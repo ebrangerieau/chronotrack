@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
@@ -72,6 +72,32 @@ const SettingsPage: React.FC = () => {
     const [localSchedule, setLocalSchedule] = useState(schedule);
     const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [importMessage, setImportMessage] = useState('');
+    const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+
+    useEffect(() => {
+        const handler = (e: Event) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallClick = () => {
+        if (!installPrompt) {
+            return;
+        }
+        (installPrompt as any).prompt();
+        (installPrompt as any).userChoice.then((choiceResult: { outcome: string }) => {
+            if (choiceResult.outcome === 'accepted') {
+                console.log('L\'utilisateur a accepté l\'installation');
+            } else {
+                console.log('L\'utilisateur a refusé l\'installation');
+            }
+            setInstallPrompt(null);
+        });
+    };
 
     const handleSettingChange = (field: keyof Settings, value: any) => {
         setLocalSettings(prev => ({ ...prev, [field]: value }));
@@ -234,6 +260,19 @@ const SettingsPage: React.FC = () => {
                         </div>
                    </div>
                 </Accordion>
+                
+                {installPrompt && (
+                    <Accordion title="Application" icon="install_desktop" defaultOpen>
+                        <div className="px-4 pb-4">
+                            <button onClick={handleInstallClick} className="w-full bg-primary text-text-light font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-opacity-90 transition-colors">
+                                Installer l'application
+                            </button>
+                            <p className="text-xs text-center text-text-subtle-light dark:text-text-subtle-dark mt-2">
+                                Installez ChronoTrack sur votre appareil pour un accès rapide et une expérience hors ligne.
+                            </p>
+                        </div>
+                    </Accordion>
+                )}
 
                 <Accordion title="Compte" icon="person">
                     <div className="px-4 pb-4">

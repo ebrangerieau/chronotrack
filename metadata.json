@@ -1,5 +1,5 @@
 {
   "name": "ChronoTrack",
-  "description": "Une application de suivi du temps de travail personnelle avec un système d'heures annualisées, permettant un suivi précis des horaires, du solde d'heures et des absences.",
+  "description": "Une application de suivi du temps de travail personnelle avec un système d'heures annualisées, permettant un suivi précis des horaires, du solde d'heures et des absences. Installable sur votre appareil et fonctionne hors ligne.",
   "requestFramePermissions": []
 }

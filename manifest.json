@@ -1,0 +1,24 @@
+{
+  "name": "ChronoTrack",
+  "short_name": "ChronoTrack",
+  "description": "Une application de suivi du temps de travail personnelle avec un système d'heures annualisées, permettant un suivi précis des horaires, du solde d'heures et des absences. Fonctionne hors-ligne.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#102216",
+  "theme_color": "#13ec5b",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
