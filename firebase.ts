@@ -1,26 +1,20 @@
-import { initializeApp } from 'firebase/app';
-import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getAuth } from 'firebase/auth';
 
-type AnalyticsInstance = ReturnType<typeof getAnalytics> | undefined;
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: 'AIzaSyC78NuhV0pxYjyqJKwYZ9Wrr2LkuBm8n6g',
-  authDomain: 'chronotrack-773e8.firebaseapp.com',
-  projectId: 'chronotrack-773e8',
-  storageBucket: 'chronotrack-773e8.firebasestorage.app',
-  messagingSenderId: '1008324597599',
-  appId: '1:1008324597599:web:f07c8f725d25b0d5ab88ea',
-  measurementId: 'G-MPFXDM0L7C',
+  apiKey: "AIzaSyC78NuhV0pxYjyqJKwYZ9Wrr2LkuBm8n6g",
+  authDomain: "chronotrack-773e8.firebaseapp.com",
+  projectId: "chronotrack-773e8",
+  storageBucket: "chronotrack-773e8.firebasestorage.app",
+  messagingSenderId: "1008324597599",
+  appId: "1:1008324597599:web:1472ff10c179a0e8ab88ea",
+  measurementId: "G-9VCNZQRLLF"
 };
 
-export const firebaseApp = initializeApp(firebaseConfig);
-
-// Accessing the auth instance ensures the component is registered when Firebase
-// initialises. Without this, Firebase may throw "Component auth has not been
-// registered yet" when other parts of the app try to use authentication APIs.
-export const auth = getAuth(firebaseApp);
-
-export const analytics: Promise<AnalyticsInstance> = isSupported()
-  .then((supported) => (supported ? getAnalytics(firebaseApp) : undefined))
-  .catch(() => undefined);
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);

@@ -1,13 +1,17 @@
-
 export type Page = 'home' | 'history' | 'calendar' | 'absence' | 'settings' | 'dayDetail';
 
 export type AbsenceType = 'Congés payés' | 'RTT' | 'Jour férié' | 'Maladie' | 'Autre';
 
+export interface TimeLog {
+  id: string;
+  time: string; // HH:mm
+  type: 'in' | 'out';
+}
+
 export interface TimeEntry {
   id: string; // YYYY-MM-DD
   date: string; // YYYY-MM-DD
-  arrivalTime: string | null; // HH:mm
-  departureTime: string | null; // HH:mm
+  logs: TimeLog[];
   breakDuration: number; // in hours (decimal)
   note?: string;
 }

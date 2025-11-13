@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { dateToISODateString, getWeekDays, addDays, formatSimpleDuration } from '../utils/dateUtils';
@@ -14,8 +13,12 @@ const DayListItem: React.FC<{ dayInfo: DayInfo, onClick: () => void }> = ({ dayI
   const dayName = new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short' });
   const dayOfMonth = new Date(date + 'T00:00:00').getDate();
 
+  const logs = entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
+  const firstIn = logs.find(l => l.type === 'in');
+  const lastOut = logs.slice().reverse().find(l => l.type === 'out');
+
   let statusColor = 'bg-positive';
-  let statusText = `${entry?.arrivalTime || ''} - ${entry?.departureTime || ''}`;
+  let statusText = `${firstIn?.time || ''} - ${lastOut?.time || ''}`;
   let workedText = formatSimpleDuration(workedMinutes);
 
   if (absence) {
@@ -30,7 +33,7 @@ const DayListItem: React.FC<{ dayInfo: DayInfo, onClick: () => void }> = ({ dayI
     statusColor = 'bg-gray-400';
     statusText = 'Repos';
     workedText = '0h 00m';
-  } else if (!entry?.arrivalTime) {
+  } else if (!entry?.logs || entry.logs.length === 0) {
      statusColor = 'bg-gray-300';
      statusText = 'Non pointé';
      workedText = '0h 00m';

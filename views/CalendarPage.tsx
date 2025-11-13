@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { getMonthDays, dateToISODateString } from '../utils/dateUtils';
@@ -65,8 +66,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-text-subtle-light dark:text-text-subtle-dark mb-2">
-                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(d => <div key={d}>{d}</div>)}
+            <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-text-subtle-light dark:text-text-subtle-dark mb-2">
+                {['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'].map(d => <div key={d}>{d}</div>)}
             </div>
 
             <div className="grid grid-cols-7 gap-2">

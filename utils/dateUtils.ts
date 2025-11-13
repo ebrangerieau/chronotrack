@@ -1,3 +1,4 @@
+import { TimeLog } from '../types';
 
 export const getTodayDateString = (): string => {
   const today = new Date();
@@ -5,7 +6,10 @@ export const getTodayDateString = (): string => {
 };
 
 export const dateToISODateString = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export const formatTime = (date: Date): string => {
@@ -45,18 +49,18 @@ export const roundToNearest15Minutes = (date: Date): Date => {
 
 
 export const formatDuration = (minutes: number): string => {
-  const safeMinutes = Number.isFinite(minutes) ? minutes : 0;
-  const sign = safeMinutes < 0 ? '-' : '+';
-  const absMinutes = Math.abs(safeMinutes);
+  if (isNaN(minutes)) minutes = 0;
+  const sign = minutes < 0 ? '-' : '+';
+  const absMinutes = Math.abs(minutes);
   const h = Math.floor(absMinutes / 60);
   const m = Math.round(absMinutes % 60);
   return `${sign}${h}h ${m.toString().padStart(2, '0')}m`;
 };
 
 export const formatSimpleDuration = (minutes: number): string => {
-  const safeMinutes = Number.isFinite(minutes) ? Math.max(minutes, 0) : 0;
-  const h = Math.floor(safeMinutes / 60);
-  const m = Math.round(safeMinutes % 60);
+  if (isNaN(minutes) || minutes < 0) minutes = 0;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
   return `${h}h ${m.toString().padStart(2, '0')}m`;
 }
 
@@ -92,4 +96,49 @@ export const addDays = (date: Date, days: number): Date => {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() + days);
     return newDate;
+};
+
+export const calculateWorkedMinutes = (
+    logs: TimeLog[], 
+    breakDuration: number, // in hours
+    defaultBreak: number // in hours
+): number => {
+    if (!logs || logs.length === 0) {
+        return 0;
+    }
+
+    const sortedLogs = [...logs].sort((a, b) => a.time.localeCompare(b.time));
+    let sessionStart: Date | null = null;
+    let presenceMinutes = 0;
+    const inLogsCount = sortedLogs.filter(l => l.type === 'in').length;
+
+    for (const log of sortedLogs) {
+        if (log.type === 'in' && sessionStart === null) {
+            sessionStart = new Date(`1970-01-01T${log.time}`);
+        } else if (log.type === 'out' && sessionStart !== null) {
+            const sessionEnd = new Date(`1970-01-01T${log.time}`);
+            if (sessionEnd > sessionStart) {
+                presenceMinutes += (sessionEnd.getTime() - sessionStart.getTime()) / (1000 * 60);
+            }
+            sessionStart = null;
+        }
+    }
+
+    let workedMinutes = 0;
+    // If there is only one session (or one 'in' and one 'out'), apply the break duration.
+    // Otherwise, the breaks are the gaps between sessions and are already excluded from presenceMinutes.
+    if (inLogsCount <= 1) {
+        const breakMinutes = breakDuration * 60;
+        // Apply default break if applicable and no break is specified for a long session
+        if (presenceMinutes > 5 * 60 && breakMinutes === 0) {
+            workedMinutes = presenceMinutes - (defaultBreak * 60);
+        } else {
+            workedMinutes = presenceMinutes - breakMinutes;
+        }
+    } else {
+        // With multiple sessions, breaks are implicit.
+        workedMinutes = presenceMinutes;
+    }
+
+    return workedMinutes < 0 ? 0 : Math.round(workedMinutes);
 };

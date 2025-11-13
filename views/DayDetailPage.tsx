@@ -1,9 +1,8 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
-import { formatFullDate, formatDuration, formatSimpleDuration, formatTime } from '../utils/dateUtils';
+import { formatFullDate, formatDuration, formatSimpleDuration, formatTime, calculateWorkedMinutes, getTodayDateString } from '../utils/dateUtils';
 import Icon from '../components/Icon';
-import { TimeEntry } from '../types';
+import { TimeEntry, TimeLog } from '../types';
 
 interface DayDetailPageProps {
   date: string;
@@ -11,30 +10,83 @@ interface DayDetailPageProps {
 }
 
 const DayDetailPage: React.FC<DayDetailPageProps> = ({ date, onBack }) => {
-  const { getDayInfo, addOrUpdateTimeEntry } = useData();
+  const { getDayInfo, addOrUpdateTimeEntry, settings } = useData();
   const dayInfo = getDayInfo(date);
 
-  const [entry, setEntry] = useState<Partial<TimeEntry>>(dayInfo.entry || { date, arrivalTime: null, departureTime: null, breakDuration: 1.5 });
+  const [entry, setEntry] = useState<Partial<TimeEntry>>(dayInfo.entry || { date, logs: [], breakDuration: settings.defaultBreak });
+  const [logs, setLogs] = useState<TimeLog[]>([]);
 
   useEffect(() => {
-    setEntry(dayInfo.entry || { date, arrivalTime: null, departureTime: null, breakDuration: 1.5 });
-  }, [date, dayInfo.entry]);
+    const initialEntry = dayInfo.entry || { date, logs: [], breakDuration: settings.defaultBreak };
+    setEntry(initialEntry);
+    setLogs(initialEntry.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || []);
+  }, [date, dayInfo.entry, settings.defaultBreak]);
   
-  const handleTimeChange = (field: 'arrivalTime' | 'departureTime', value: string) => {
-    setEntry(prev => ({...prev, [field]: value}));
-  };
-  
+  const liveWorkedMinutes = useMemo(() => {
+    return calculateWorkedMinutes(logs, entry.breakDuration ?? settings.defaultBreak, settings.defaultBreak);
+  }, [logs, entry.breakDuration, settings.defaultBreak]);
+
+  const liveBalanceMinutes = useMemo(() => {
+    const { theoreticalMinutes, absence, isHoliday, isWeekend } = dayInfo;
+
+    if (isWeekend || isHoliday) {
+      return 0;
+    }
+    if (absence) {
+      return absence.type === 'RTT' ? Math.round(-settings.rttEquivalent * 60) : 0;
+    }
+
+    // It's a normal workday
+    const balance = liveWorkedMinutes - theoreticalMinutes;
+
+    // For today or future days with no time logged yet, the balance is 0, not negative.
+    if (liveWorkedMinutes === 0 && date >= getTodayDateString()) {
+      return 0;
+    }
+
+    return Math.round(balance);
+  }, [liveWorkedMinutes, dayInfo, date, settings.rttEquivalent]);
+
+
   const handleBreakChange = (value: string) => {
     const [h, m] = value.split(':').map(Number);
     setEntry(prev => ({...prev, breakDuration: h + m/60}));
   };
-
+  
   const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setEntry(prev => ({...prev, note: e.target.value}));
   };
+  
+  const handleLogTimeChange = (id: string, newTime: string) => {
+    setLogs(prevLogs => 
+      prevLogs.map(log => log.id === id ? { ...log, time: newTime } : log)
+    );
+  };
+  
+  const handleDeleteLog = (id: string) => {
+    setLogs(prevLogs => prevLogs.filter(log => log.id !== id));
+  };
+
+  const handleAddLog = () => {
+    const sortedLogs = [...logs].sort((a, b) => a.time.localeCompare(b.time));
+    const lastLog = sortedLogs.length > 0 ? sortedLogs[sortedLogs.length - 1] : null;
+    const nextType = lastLog?.type === 'in' ? 'out' : 'in';
+    const newLog: TimeLog = {
+      id: Date.now().toString(),
+      time: formatTime(new Date()),
+      type: nextType,
+    };
+    setLogs(prevLogs => [...prevLogs, newLog].sort((a, b) => a.time.localeCompare(b.time)));
+  };
 
   const handleSave = () => {
-    addOrUpdateTimeEntry({ date, ...entry });
+    const sortedLogs = [...logs].sort((a, b) => a.time.localeCompare(b.time));
+    addOrUpdateTimeEntry({ 
+      date, 
+      logs: sortedLogs, 
+      breakDuration: entry.breakDuration, 
+      note: entry.note 
+    });
     onBack();
   };
   
@@ -51,28 +103,63 @@ const DayDetailPage: React.FC<DayDetailPageProps> = ({ date, onBack }) => {
       </header>
       
       <main className="p-4 flex flex-col gap-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard label="Temps total" value={formatSimpleDuration(dayInfo.workedMinutes)} />
-            <StatCard label="Solde journalier" value={formatDuration(dayInfo.balanceMinutes)} valueColor={dayInfo.balanceMinutes >= 0 ? 'text-positive' : 'text-negative'} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StatCard label="Temps total" value={formatSimpleDuration(liveWorkedMinutes)} />
+            <StatCard label="Solde journalier" value={formatDuration(liveBalanceMinutes)} valueColor={liveBalanceMinutes >= 0 ? 'text-positive' : 'text-negative'} />
+        </div>
+
+        <div className="flex flex-col gap-4 bg-card-light dark:bg-card-dark rounded-lg border border-border-light dark:border-border-dark p-4">
+          <h3 className="font-bold">Pointages</h3>
+          <div className="flex flex-col gap-3">
+            {logs.length > 0 ? (
+              logs.map((log) => (
+                <div key={log.id} className="flex items-center gap-2">
+                    <span className={`w-20 shrink-0 font-medium ${log.type === 'in' ? 'text-positive' : 'text-negative'}`}>
+                        {log.type === 'in' ? 'Arrivée' : 'Départ'}
+                    </span>
+                    <input
+                        type="time"
+                        value={log.time}
+                        onChange={(e) => handleLogTimeChange(log.id, e.target.value)}
+                        className="w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-sm p-1.5 focus:ring-primary focus:border-primary"
+                    />
+                    <button 
+                        onClick={() => handleDeleteLog(log.id)} 
+                        className="p-2 rounded-full text-text-subtle-light dark:text-text-subtle-dark hover:bg-negative/10 hover:text-negative"
+                        aria-label="Supprimer le pointage"
+                    >
+                        <Icon name="delete" className="text-xl" />
+                    </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-text-subtle-light dark:text-text-subtle-dark text-sm text-center py-2">
+                Aucun pointage pour cette journée.
+              </p>
+            )}
+            <button 
+                onClick={handleAddLog} 
+                className="flex items-center justify-center gap-2 w-full mt-2 py-2 px-4 border-2 border-dashed border-border-light dark:border-border-dark rounded-lg text-sm font-semibold text-text-subtle-light dark:text-text-subtle-dark hover:bg-primary/10 hover:text-primary transition-colors"
+            >
+                <Icon name="add" />
+                Ajouter un pointage
+            </button>
+          </div>
         </div>
         
         <div className="flex flex-col gap-1 bg-card-light dark:bg-card-dark rounded-lg border border-border-light dark:border-border-dark">
-            <EditableTimeField icon="login" label="Heure d'arrivée" value={entry.arrivalTime} onChange={(v) => handleTimeChange('arrivalTime', v)} />
-             <div className="border-b border-border-light dark:border-border-dark mx-4"></div>
-            <EditableTimeField icon="logout" label="Heure de départ" value={entry.departureTime} onChange={(v) => handleTimeChange('departureTime', v)} />
-             <div className="border-b border-border-light dark:border-border-dark mx-4"></div>
             <EditableTimeField icon="coffee" label="Durée de la pause" value={breakValue} onChange={handleBreakChange} type="time" />
         </div>
         
         <div className="flex flex-col gap-2">
             <label className="font-medium text-base" htmlFor="notes">Notes</label>
-            <textarea value={entry.note || ''} onChange={handleNoteChange} className="w-full rounded-lg border border-border-light dark:border-border-dark bg-card-light dark:bg-card-dark placeholder-text-subtle-light dark:placeholder-text-subtle-dark focus:border-primary focus:ring-primary" id="notes" name="notes" placeholder="Ajouter une note..." rows="4"></textarea>
+            <textarea value={entry.note || ''} onChange={handleNoteChange} className="w-full rounded-lg border border-border-light dark:border-border-dark bg-card-light dark:bg-card-dark placeholder-text-subtle-light dark:placeholder-text-subtle-dark focus:border-primary focus:ring-primary" id="notes" name="notes" placeholder="Ajouter une note..." rows={4}></textarea>
         </div>
 
         <div className="flex flex-col gap-4 mt-2">
-            <button onClick={handleSave} className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 bg-transparent text-primary gap-2 text-base font-bold border-2 border-primary">
+            <button onClick={handleSave} className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 bg-primary text-text-light gap-2 text-base font-bold">
                 <Icon name="save" />
-                <span>Enregistrer</span>
+                <span>Enregistrer les modifications</span>
             </button>
         </div>
       </main>

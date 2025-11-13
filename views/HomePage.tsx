@@ -1,41 +1,50 @@
-
 import React from 'react';
 import Icon from '../components/Icon';
 import { useTime } from '../hooks/useTime';
 import { useData } from '../contexts/DataContext';
-import { formatTime, formatDuration, getTodayDateString, formatSimpleDuration } from '../utils/dateUtils';
+import { formatTime, formatDuration, getTodayDateString, formatSimpleDuration, timeStringToMinutes } from '../utils/dateUtils';
+import { TimeLog } from '../types';
 
 const HomePage: React.FC = () => {
   const time = useTime();
   const { getDayInfo, getAnnualBalance, addOrUpdateTimeEntry } = useData();
-
   const todayDateString = getTodayDateString();
-  const todayInfo = getDayInfo(todayDateString);
-  const annualBalanceMinutes = getAnnualBalance();
 
-  const workedMinutesToday = todayInfo.workedMinutes > 0 ? todayInfo.workedMinutes : 
-    (todayInfo.entry?.arrivalTime ? (new Date().getTime() - new Date(`1970-01-01T${todayInfo.entry.arrivalTime}`).getTime()) / 60000 : 0)
+  const initialTodayInfo = getDayInfo(todayDateString);
+  const logs = initialTodayInfo.entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
+  const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
-  const handleClockIn = () => {
+  const handleClock = () => {
+    const nextLogType = !lastLog || lastLog.type === 'out' ? 'in' : 'out';
+    const newLog: TimeLog = {
+      id: Date.now().toString(),
+      time: formatTime(new Date()),
+      type: nextLogType,
+    };
     addOrUpdateTimeEntry({
       date: todayDateString,
-      arrivalTime: formatTime(new Date()),
-      departureTime: null,
+      logs: [...logs, newLog],
     });
   };
 
-  const handleClockOut = () => {
-    addOrUpdateTimeEntry({
-      date: todayDateString,
-      departureTime: formatTime(new Date()),
-    });
-  };
+  let runningMinutes = 0;
+  if (lastLog && lastLog.type === 'in') {
+      const sessionStartMinutes = timeStringToMinutes(lastLog.time);
+      const nowMinutes = time.getHours() * 60 + time.getMinutes();
+      if (nowMinutes >= sessionStartMinutes) {
+        runningMinutes = nowMinutes - sessionStartMinutes;
+      }
+  }
 
-  const hasClockedIn = !!todayInfo.entry?.arrivalTime;
-  const hasClockedOut = !!todayInfo.entry?.departureTime;
-  const mainButtonAction = hasClockedIn && !hasClockedOut ? handleClockOut : handleClockIn;
-  const mainButtonText = hasClockedIn && !hasClockedOut ? 'DÉPART' : 'ARRIVÉE';
-  const mainButtonIcon = hasClockedIn && !hasClockedOut ? 'logout' : 'login';
+  // Get live data by passing runningMinutes to context functions
+  const todayInfoLive = getDayInfo(todayDateString, runningMinutes);
+  const annualBalanceLive = getAnnualBalance(runningMinutes);
+
+  const isClockedIn = lastLog?.type === 'in';
+  const mainButtonAction = handleClock;
+  const mainButtonText = isClockedIn ? 'DÉPART' : 'ARRIVÉE';
+  const mainButtonIcon = isClockedIn ? 'logout' : 'login';
+  const firstLog = logs.find(log => log.type === 'in');
 
   return (
     <div className="relative flex h-full w-full flex-col">
@@ -57,10 +66,9 @@ const HomePage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex px-4 py-6">
+        <div className="flex justify-center px-4 py-6">
           <button
             onClick={mainButtonAction}
-            disabled={hasClockedOut}
             className="flex flex-1 cursor-pointer items-center justify-center gap-3 overflow-hidden rounded-full h-16 min-w-[84px] max-w-[480px] bg-primary px-8 text-lg font-bold tracking-[0.015em] text-text-light shadow-lg shadow-primary/20 transition-all hover:bg-opacity-90 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none"
           >
             <Icon name={mainButtonIcon} />
@@ -70,8 +78,8 @@ const HomePage: React.FC = () => {
 
         <div className="flex flex-col items-center justify-center py-4">
           <p className="text-sm font-medium text-text-subtle-light dark:text-text-subtle-dark">Solde Annualisé</p>
-          <p className={`font-monospace text-3xl font-bold ${annualBalanceMinutes >= 0 ? 'text-positive' : 'text-negative'}`}>
-            {formatDuration(annualBalanceMinutes)}
+          <p className={`font-monospace text-3xl font-bold ${annualBalanceLive >= 0 ? 'text-positive' : 'text-negative'}`}>
+            {formatDuration(annualBalanceLive)}
           </p>
         </div>
 
@@ -81,21 +89,36 @@ const HomePage: React.FC = () => {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Arrivée</p>
-                <p className="font-monospace text-base font-bold">{todayInfo.entry?.arrivalTime || '--:--'}</p>
+                <p className="font-monospace text-base font-bold">{firstLog?.time || '--:--'}</p>
               </div>
               <div>
                 <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Travaillé</p>
                 <p className="font-monospace text-base font-bold">
-                    {formatSimpleDuration(workedMinutesToday)}
+                    {formatSimpleDuration(todayInfoLive.workedMinutes)}
                 </p>
               </div>
               <div>
                 <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Solde</p>
-                <p className={`font-monospace text-base font-bold ${todayInfo.balanceMinutes >= 0 ? 'text-positive' : 'text-negative'}`}>
-                  {formatDuration(todayInfo.balanceMinutes)}
+                <p className={`font-monospace text-base font-bold ${todayInfoLive.balanceMinutes >= 0 ? 'text-positive' : 'text-negative'}`}>
+                  {formatDuration(todayInfoLive.balanceMinutes)}
                 </p>
               </div>
             </div>
+            {logs.length > 0 && (
+              <div className="mt-4 border-t border-border-light dark:border-border-dark pt-4">
+                <h4 className="text-sm font-medium text-text-subtle-light dark:text-text-subtle-dark mb-2">Pointages du jour</h4>
+                <ul className="space-y-2">
+                  {logs.map(log => (
+                    <li key={log.id} className="flex justify-between items-center text-sm">
+                      <span className={`font-medium ${log.type === 'in' ? 'text-positive' : 'text-negative'}`}>
+                        {log.type === 'in' ? 'Arrivée' : 'Départ'}
+                      </span>
+                      <span className="font-monospace font-bold">{log.time}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </main>

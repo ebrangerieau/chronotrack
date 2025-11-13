@@ -1,59 +1,46 @@
 
 import React, { useState, useEffect } from 'react';
 import { DataProvider, useData } from './contexts/DataContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import HomePage from './views/HomePage';
 import HistoryPage from './views/HistoryPage';
 import CalendarPage from './views/CalendarPage';
 import SettingsPage from './views/SettingsPage';
 import AbsencePage from './views/AbsencePage';
 import DayDetailPage from './views/DayDetailPage';
+import AuthPage from './views/AuthPage';
 import Layout from './components/Layout';
+import Icon from './components/Icon';
 import { Page } from './types';
 
-const ThemeManager: React.FC = () => {
-  const { settings } = useData();
-  const theme = settings.display.theme;
+const AppContent: React.FC = () => {
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { dataLoading, settings } = useData();
+  const [page, setPage] = useState<Page>('home');
+  const [activeDay, setActiveDay] = useState<string | null>(null);
 
   useEffect(() => {
     const root = window.document.documentElement;
-
-    const applyTheme = (isDark: boolean) => {
-      if (isDark) {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
-    };
-
-    const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-      if (theme === 'system') {
-        applyTheme(e.matches);
-      }
-    };
-
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
-    if (theme === 'dark') {
-      applyTheme(true);
-    } else if (theme === 'light') {
-      applyTheme(false);
-    } else { // 'system'
-      applyTheme(mediaQuery.matches);
-      mediaQuery.addEventListener('change', handleSystemThemeChange);
-    }
 
-    return () => {
-      mediaQuery.removeEventListener('change', handleSystemThemeChange);
+    const applyTheme = () => {
+        const isDark =
+            settings.display.theme === 'dark' ||
+            (settings.display.theme === 'system' && mediaQuery.matches);
+        
+        if (isDark) {
+            root.classList.add('dark');
+        } else {
+            root.classList.remove('dark');
+        }
     };
-  }, [theme]);
 
-  return null; // This component does not render anything visible
-};
+    applyTheme();
 
+    mediaQuery.addEventListener('change', applyTheme);
+    return () => mediaQuery.removeEventListener('change', applyTheme);
+  }, [settings.display.theme]);
 
-const App: React.FC = () => {
-  const [page, setPage] = useState<Page>('home');
-  const [activeDay, setActiveDay] = useState<string | null>(null);
 
   const handleNavigate = (newPage: Page) => {
     setActiveDay(null);
@@ -83,14 +70,34 @@ const App: React.FC = () => {
         return <HomePage />;
     }
   };
+  
+  if (authLoading || (isAuthenticated && dataLoading)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background-light dark:bg-background-dark">
+        <Icon name="progress_activity" className="text-4xl text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthPage />;
+  }
 
   return (
-    <DataProvider>
-      <ThemeManager />
       <Layout currentPage={page} navigate={handleNavigate}>
         {renderPage()}
       </Layout>
-    </DataProvider>
+  );
+};
+
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <DataProvider>
+        <AppContent />
+      </DataProvider>
+    </AuthProvider>
   );
 };
 
