@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
+import { getAuth } from 'firebase/auth';
 
 type AnalyticsInstance = ReturnType<typeof getAnalytics> | undefined;
 
@@ -14,6 +15,11 @@ const firebaseConfig = {
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);
+
+// Accessing the auth instance ensures the component is registered when Firebase
+// initialises. Without this, Firebase may throw "Component auth has not been
+// registered yet" when other parts of the app try to use authentication APIs.
+export const auth = getAuth(firebaseApp);
 
 export const analytics: Promise<AnalyticsInstance> = isSupported()
   .then((supported) => (supported ? getAnalytics(firebaseApp) : undefined))
