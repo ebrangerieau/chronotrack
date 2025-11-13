@@ -2,13 +2,20 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
-import { getMonthDays, dateToISODateString } from '../utils/dateUtils';
+import { getMonthDays, dateToISODateString, formatSimpleDuration, formatDuration } from '../utils/dateUtils';
 import Icon from '../components/Icon';
 import { DayInfo } from '../types';
 
 interface CalendarPageProps {
   onSelectDay: (date: string) => void;
 }
+
+const StatCard: React.FC<{label: string, value: string, valueColor?: string}> = ({label, value, valueColor = 'text-text-light dark:text-text-dark'}) => (
+     <div className="flex flex-1 flex-col gap-1 rounded-lg p-3 bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark text-center">
+        <p className="text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">{label}</p>
+        <p className={`tracking-tight text-xl font-bold ${valueColor}`}>{value}</p>
+    </div>
+);
 
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
@@ -25,6 +32,24 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
     // Adjust for Monday start: Sunday is 0, we want it to be 6.
     const startOffset = (firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1);
+    
+    const monthlyStats = useMemo(() => {
+        return monthInfo.reduce((acc, day) => {
+            acc.worked += day.workedMinutes;
+            if (day.isHoliday) {
+                acc.worked += day.theoreticalMinutes;
+            }
+
+            if (!day.isWeekend && !day.isHoliday && !day.absence) {
+                acc.theoretical += day.theoreticalMinutes;
+            }
+
+            acc.balance += day.balanceMinutes;
+
+            return acc;
+        }, { worked: 0, theoretical: 0, balance: 0 });
+    }, [monthInfo]);
+
 
     const changeMonth = (amount: number) => {
         setCurrentDate(prev => {
@@ -82,6 +107,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
                     </button>
                 ))}
             </div>
+            
+            <section className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard label="Heures travaillées" value={formatSimpleDuration(monthlyStats.worked)} />
+                <StatCard label="Objectif du mois" value={formatSimpleDuration(monthlyStats.theoretical)} />
+                <StatCard label="Solde du mois" value={formatDuration(monthlyStats.balance)} valueColor={monthlyStats.balance >= 0 ? 'text-positive' : 'text-negative'} />
+            </section>
             
             <div className="px-4 pt-6">
                 <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center text-xs text-text-light-secondary dark:text-text-dark-secondary">

@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { TimeEntry, Absence, Settings, WorkSchedule, DayInfo, WeekDay, TimeLog } from '../types';
 import { DEFAULT_SETTINGS, DEFAULT_SCHEDULE, PUBLIC_HOLIDAYS_FR } from '../constants';
-import { dateToISODateString, getDayOfWeek, calculateWorkedMinutes, timeStringToMinutes } from '../utils/dateUtils';
+import { dateToISODateString, getDayOfWeek, calculateWorkedMinutes, timeStringToMinutes, getWeekDays } from '../utils/dateUtils';
 
 interface DataContextProps {
   settings: Settings;
@@ -18,6 +18,7 @@ interface DataContextProps {
   addAbsence: (absence: Omit<Absence, 'id'>) => Promise<void>;
   getDayInfo: (date: string, liveRunningMinutes?: number) => DayInfo;
   getAnnualBalance: (liveRunningMinutes?: number) => number;
+  getCurrentWeekBalance: (liveRunningMinutes?: number) => number;
   dataLoading: boolean;
 }
 
@@ -250,6 +251,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   }, [settings.initialBalance, settings.yearStartDate, getDayInfo]);
 
+  const getCurrentWeekBalance = useCallback((liveRunningMinutes = 0): number => {
+    const today = new Date();
+    const weekDays = getWeekDays(today);
+
+    const totalBalanceMinutes = weekDays.reduce((total, day) => {
+      const dateStr = dateToISODateString(day);
+      const dayInfo = getDayInfo(dateStr, liveRunningMinutes);
+      return total + dayInfo.balanceMinutes;
+    }, 0);
+
+    return totalBalanceMinutes;
+  }, [getDayInfo]);
+
   const value = {
     settings,
     updateSettings,
@@ -262,6 +276,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addAbsence,
     getDayInfo,
     getAnnualBalance,
+    getCurrentWeekBalance,
     dataLoading
   };
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatFullDate, formatDuration, formatSimpleDuration, formatTime, calculateWorkedMinutes, getTodayDateString } from '../utils/dateUtils';
@@ -7,9 +8,10 @@ import { TimeEntry, TimeLog } from '../types';
 interface DayDetailPageProps {
   date: string;
   onBack: () => void;
+  onChangeDate: (offset: number) => void;
 }
 
-const DayDetailPage: React.FC<DayDetailPageProps> = ({ date, onBack }) => {
+const DayDetailPage: React.FC<DayDetailPageProps> = ({ date, onBack, onChangeDate }) => {
   const { getDayInfo, addOrUpdateTimeEntry, settings } = useData();
   const dayInfo = getDayInfo(date);
 
@@ -98,7 +100,15 @@ const DayDetailPage: React.FC<DayDetailPageProps> = ({ date, onBack }) => {
         <button onClick={onBack} className="flex items-center justify-center size-10 rounded-full hover:bg-primary/10">
           <Icon name="arrow_back" />
         </button>
-        <h2 className="text-lg font-bold flex-1 text-center">{formatFullDate(date)}</h2>
+        <div className="flex items-center justify-center flex-1 gap-2">
+            <button onClick={() => onChangeDate(-1)} className="flex items-center justify-center size-10 rounded-full hover:bg-primary/10">
+              <Icon name="chevron_left" />
+            </button>
+            <h2 className="text-lg font-bold text-center whitespace-nowrap">{formatFullDate(date)}</h2>
+            <button onClick={() => onChangeDate(1)} className="flex items-center justify-center size-10 rounded-full hover:bg-primary/10">
+              <Icon name="chevron_right" />
+            </button>
+        </div>
         <div className="w-10"></div>
       </header>
       

@@ -12,6 +12,7 @@ import AuthPage from './views/AuthPage';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 import { Page } from './types';
+import { dateToISODateString } from './utils/dateUtils';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
@@ -52,6 +53,16 @@ const AppContent: React.FC = () => {
     setPage('dayDetail');
   };
 
+  const handleChangeDay = (offset: number) => {
+    if (!activeDay) return;
+    
+    const currentDate = new Date(activeDay + 'T00:00:00'); // Prevent timezone issues by setting time to midnight
+    currentDate.setDate(currentDate.getDate() + offset);
+    
+    const newDateString = dateToISODateString(currentDate);
+    setActiveDay(newDateString);
+  };
+
   const renderPage = () => {
     switch (page) {
       case 'home':
@@ -65,7 +76,7 @@ const AppContent: React.FC = () => {
       case 'absence':
         return <AbsencePage />;
        case 'dayDetail':
-        return activeDay ? <DayDetailPage date={activeDay} onBack={() => setPage('history')} /> : <HistoryPage onSelectDay={handleSelectDay} />;
+        return activeDay ? <DayDetailPage date={activeDay} onBack={() => setPage('history')} onChangeDate={handleChangeDay} /> : <HistoryPage onSelectDay={handleSelectDay} />;
       default:
         return <HomePage />;
     }

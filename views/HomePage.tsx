@@ -7,7 +7,7 @@ import { TimeLog } from '../types';
 
 const HomePage: React.FC = () => {
   const time = useTime();
-  const { getDayInfo, getAnnualBalance, addOrUpdateTimeEntry } = useData();
+  const { getDayInfo, addOrUpdateTimeEntry, getAnnualBalance } = useData();
   const todayDateString = getTodayDateString();
 
   const initialTodayInfo = getDayInfo(todayDateString);
@@ -77,7 +77,7 @@ const HomePage: React.FC = () => {
         </div>
 
         <div className="flex flex-col items-center justify-center py-4">
-          <p className="text-sm font-medium text-text-subtle-light dark:text-text-subtle-dark">Solde Annualisé</p>
+          <p className="text-sm font-medium text-text-subtle-light dark:text-text-subtle-dark">Solde Annuel</p>
           <p className={`font-monospace text-3xl font-bold ${annualBalanceLive >= 0 ? 'text-positive' : 'text-negative'}`}>
             {formatDuration(annualBalanceLive)}
           </p>
