@@ -45,18 +45,18 @@ export const roundToNearest15Minutes = (date: Date): Date => {
 
 
 export const formatDuration = (minutes: number): string => {
-  if (isNaN(minutes) || minutes < 0) minutes = 0;
-  const sign = minutes < 0 ? '-' : '+';
-  const absMinutes = Math.abs(minutes);
+  const safeMinutes = Number.isFinite(minutes) ? minutes : 0;
+  const sign = safeMinutes < 0 ? '-' : '+';
+  const absMinutes = Math.abs(safeMinutes);
   const h = Math.floor(absMinutes / 60);
   const m = Math.round(absMinutes % 60);
   return `${sign}${h}h ${m.toString().padStart(2, '0')}m`;
 };
 
 export const formatSimpleDuration = (minutes: number): string => {
-  if (isNaN(minutes) || minutes < 0) minutes = 0;
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(minutes, 0) : 0;
+  const h = Math.floor(safeMinutes / 60);
+  const m = Math.round(safeMinutes % 60);
   return `${h}h ${m.toString().padStart(2, '0')}m`;
 }
 
