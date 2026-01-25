@@ -1,10 +1,11 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { TimeEntry, Absence, Settings, WorkSchedule, DayInfo, WeekDay, TimeLog } from '../types';
 import { DEFAULT_SETTINGS, DEFAULT_SCHEDULE, PUBLIC_HOLIDAYS_FR } from '../constants';
-import { dateToISODateString, getDayOfWeek, calculateWorkedMinutes, timeStringToMinutes, getWeekDays } from '../utils/dateUtils';
+import { dateToISODateString, getDayOfWeek, calculateWorkedMinutes, timeStringToMinutes, formatTime, getTodayDateString } from '../utils/dateUtils';
 
 interface DataContextProps {
   settings: Settings;
@@ -17,8 +18,9 @@ interface DataContextProps {
   absences: Absence[];
   addAbsence: (absence: Omit<Absence, 'id'>) => Promise<void>;
   getDayInfo: (date: string, liveRunningMinutes?: number) => DayInfo;
-  getAnnualBalance: (liveRunningMinutes?: number) => number;
-  getCurrentWeekBalance: (liveRunningMinutes?: number) => number;
+  performClockAction: () => Promise<void>;
+  closeMissedPunch: (date: string, time: string) => Promise<void>;
+  historicalBalance: number;
   dataLoading: boolean;
 }
 
@@ -31,6 +33,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [historicalBalance, setHistoricalBalance] = useState(0);
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -41,28 +44,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setSettings(data.settings || DEFAULT_SETTINGS);
+          setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
           setSchedule(data.schedule || DEFAULT_SCHEDULE);
-          // Simple migration for old data structure
-          const loadedEntries = (data.timeEntries || []).map((entry: any) => {
-            if (entry.arrivalTime && !entry.logs) {
-              const logs: TimeLog[] = [];
-              if (entry.arrivalTime) {
-                logs.push({ id: `${new Date(`${entry.date}T${entry.arrivalTime}`).getTime()}`, time: entry.arrivalTime, type: 'in' });
-              }
-              if (entry.departureTime) {
-                logs.push({ id: `${new Date(`${entry.date}T${entry.departureTime}`).getTime()}`, time: entry.departureTime, type: 'out' });
-              }
-              // FIX: Use destructuring to remove deprecated fields and avoid TypeScript errors.
-              const { arrivalTime, departureTime, ...restOfEntry } = entry;
-              return { ...restOfEntry, logs };
-            }
-            return entry;
-          });
-          setTimeEntries(loadedEntries);
+          setTimeEntries(data.timeEntries || []);
           setAbsences(data.absences || []);
         } else {
-          // New user, create initial data document
           const initialData = {
             settings: DEFAULT_SETTINGS,
             schedule: DEFAULT_SCHEDULE,
@@ -77,7 +63,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setDataLoading(false);
       } else {
-        // User logged out, reset state
         setSettings(DEFAULT_SETTINGS);
         setSchedule(DEFAULT_SCHEDULE);
         setTimeEntries([]);
@@ -106,14 +91,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addOrUpdateTimeEntry = async (entry: Partial<TimeEntry> & { date: string }) => {
     if (!user) return;
-
-    // Sanitize the incoming entry object to remove undefined values, which Firestore doesn't support.
     const sanitizedEntry = { ...entry };
-    (Object.keys(sanitizedEntry) as Array<keyof typeof sanitizedEntry>).forEach(key => {
-        if (sanitizedEntry[key] === undefined) {
-            delete sanitizedEntry[key];
-        }
-    });
     
     let updatedEntries: TimeEntry[];
     const existingIndex = timeEntries.findIndex(e => e.date === sanitizedEntry.date);
@@ -128,7 +106,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logs: [],
         breakDuration: settings.defaultBreak,
         ...sanitizedEntry
-      };
+      } as TimeEntry;
       updatedEntries = [...timeEntries, newEntry];
     }
     setTimeEntries(updatedEntries);
@@ -138,27 +116,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const importTimeEntries = async (entriesToImport: TimeEntry[]) => {
     if (!user) return;
-    
-    // Use a Map for efficient merging. New entries will overwrite existing ones for the same date.
-    const entriesMap = new Map(timeEntries.map(e => [e.date, e]));
+    // FIX: Explicitly type the Map to prevent TypeScript from inferring 'unknown' types during sort
+    const entriesMap = new Map<string, TimeEntry>(timeEntries.map(e => [e.date, e]));
     for (const entry of entriesToImport) {
         entriesMap.set(entry.date, entry);
     }
-
-    // FIX: Explicitly type `a` and `b` to resolve type inference issue.
-    const updatedEntries = Array.from(entriesMap.values()).sort((a: TimeEntry, b: TimeEntry) => a.date.localeCompare(b.date));
+    const updatedEntries = Array.from(entriesMap.values()).sort((a, b) => a.date.localeCompare(b.date));
     setTimeEntries(updatedEntries);
     const userDocRef = doc(db, 'users', user.uid);
     await setDoc(userDocRef, { timeEntries: updatedEntries }, { merge: true });
   };
 
-
   const addAbsence = async (absence: Omit<Absence, 'id'>) => {
     if (!user) return;
-    const newAbsence: Absence = {
-      id: `${absence.startDate}-${Math.random()}`,
-      ...absence
-    };
+    const newAbsence: Absence = { id: `${absence.startDate}-${Math.random()}`, ...absence };
     const updatedAbsences = [...absences, newAbsence];
     setAbsences(updatedAbsences);
     const userDocRef = doc(db, 'users', user.uid);
@@ -167,7 +138,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getTheoreticalMinutesForDay = useCallback((date: string): number => {
     const dayIndex = getDayOfWeek(date);
-    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex] as WeekDay;
+    const dayNames: WeekDay[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[dayIndex];
     const daySchedule = schedule[dayName];
     
     let totalMinutes = 0;
@@ -180,7 +152,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return totalMinutes;
   }, [schedule]);
 
-
   const getDayInfo = useCallback((dateStr: string, liveRunningMinutes = 0): DayInfo => {
     const entry = timeEntries.find(e => e.date === dateStr);
     const absence = absences.find(a => dateStr >= a.startDate && dateStr <= a.endDate);
@@ -192,101 +163,69 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (entry) {
         workedMinutes = calculateWorkedMinutes(entry.logs, entry.breakDuration, settings.defaultBreak);
     }
-    
-    // Add live minutes only for today
     if (dateStr === dateToISODateString(new Date())) {
         workedMinutes += liveRunningMinutes;
     }
-    
     const theoreticalMinutes = getTheoreticalMinutesForDay(dateStr);
     
     let balanceMinutes = 0;
     if (!isWeekend && !isHoliday && !absence) {
-        // If live minutes are passed, it means we want a live balance, not 0
         if (workedMinutes > 0 || liveRunningMinutes > 0) {
              balanceMinutes = workedMinutes - theoreticalMinutes;
         } else if (new Date(dateStr) < new Date(dateToISODateString(new Date()))) {
-             balanceMinutes = -theoreticalMinutes; // Past Not worked day
+             balanceMinutes = -theoreticalMinutes;
         }
     } else if (absence?.type === 'RTT') {
         balanceMinutes = -(settings.rttEquivalent * 60);
     }
 
-    return {
-        date: dateStr,
-        workedMinutes: Math.round(workedMinutes),
-        theoreticalMinutes,
-        balanceMinutes: Math.round(balanceMinutes),
-        entry,
-        absence,
-        isHoliday,
-        isWeekend,
-    };
+    return { date: dateStr, workedMinutes: Math.round(workedMinutes), theoreticalMinutes, balanceMinutes: Math.round(balanceMinutes), entry, absence, isHoliday, isWeekend };
   }, [timeEntries, absences, settings.rttEquivalent, settings.defaultBreak, getTheoreticalMinutesForDay]);
 
+  const performClockAction = async () => {
+    if (!user) return;
+    const todayDateString = getTodayDateString();
+    const todayEntry = timeEntries.find(e => e.date === todayDateString);
+    const logs = todayEntry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
+    const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
-  const getAnnualBalance = useCallback((liveRunningMinutes = 0): number => {
+    const nextLogType = !lastLog || lastLog.type === 'out' ? 'in' : 'out';
+    const newLog: TimeLog = { id: Date.now().toString(), time: formatTime(new Date()), type: nextLogType };
+
+    await addOrUpdateTimeEntry({ date: todayDateString, logs: [...logs, newLog] });
+  };
+
+  const closeMissedPunch = async (date: string, time: string) => {
+      const entry = timeEntries.find(e => e.date === date);
+      if (!entry) return;
+      const newLog: TimeLog = { id: Date.now().toString(), time: time, type: 'out' };
+      await addOrUpdateTimeEntry({ date: date, logs: [...entry.logs, newLog] });
+  };
+
+  useEffect(() => {
+    if (dataLoading) return;
     let totalBalanceMinutes = settings.initialBalance * 60;
-    
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const yearStartDate = new Date(`${currentYear}-${settings.yearStartDate.month}-${settings.yearStartDate.day}`);
-    
-    if (now < yearStartDate) {
-        yearStartDate.setFullYear(currentYear - 1);
-    }
-
+    const today = new Date();
+    const todayStr = dateToISODateString(today); 
+    const currentYear = today.getFullYear();
+    const yearStartDate = new Date(currentYear, settings.yearStartDate.month - 1, settings.yearStartDate.day);
+    if (today < yearStartDate) yearStartDate.setFullYear(currentYear - 1);
     let currentDate = new Date(yearStartDate);
-    const today = new Date(dateToISODateString(new Date()));
-    const todayStr = dateToISODateString(today);
-
-    while(currentDate <= today){
+    while(dateToISODateString(currentDate) < todayStr){
         const dateStr = dateToISODateString(currentDate);
-        const dayInfo = getDayInfo(dateStr, dateStr === todayStr ? liveRunningMinutes : 0);
+        const dayInfo = getDayInfo(dateStr);
         totalBalanceMinutes += dayInfo.balanceMinutes;
         currentDate.setDate(currentDate.getDate() + 1);
     }
-    
-    return totalBalanceMinutes;
+    setHistoricalBalance(totalBalanceMinutes);
+  }, [dataLoading, settings, timeEntries, absences, getDayInfo]);
 
-  }, [settings.initialBalance, settings.yearStartDate, getDayInfo]);
-
-  const getCurrentWeekBalance = useCallback((liveRunningMinutes = 0): number => {
-    const today = new Date();
-    const weekDays = getWeekDays(today);
-
-    const totalBalanceMinutes = weekDays.reduce((total, day) => {
-      const dateStr = dateToISODateString(day);
-      const dayInfo = getDayInfo(dateStr, liveRunningMinutes);
-      return total + dayInfo.balanceMinutes;
-    }, 0);
-
-    return totalBalanceMinutes;
-  }, [getDayInfo]);
-
-  const value = {
-    settings,
-    updateSettings,
-    schedule,
-    updateSchedule,
-    timeEntries,
-    addOrUpdateTimeEntry,
-    importTimeEntries,
-    absences,
-    addAbsence,
-    getDayInfo,
-    getAnnualBalance,
-    getCurrentWeekBalance,
-    dataLoading
-  };
-
+  const value = { settings, updateSettings, schedule, updateSchedule, timeEntries, addOrUpdateTimeEntry, importTimeEntries, absences, addAbsence, getDayInfo, performClockAction, closeMissedPunch, historicalBalance, dataLoading };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };
 
 export const useData = () => {
   const context = useContext(DataContext);
-  if (context === undefined) {
-    throw new Error('useData must be used within a DataProvider');
-  }
+  if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 };

@@ -9,6 +9,7 @@ import SettingsPage from './views/SettingsPage';
 import AbsencePage from './views/AbsencePage';
 import DayDetailPage from './views/DayDetailPage';
 import AuthPage from './views/AuthPage';
+import WidgetPage from './views/WidgetPage';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 import { Page } from './types';
@@ -16,7 +17,7 @@ import { dateToISODateString } from './utils/dateUtils';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const { dataLoading, settings } = useData();
+  const { dataLoading, settings, performClockAction } = useData();
   const [page, setPage] = useState<Page>('home');
   const [activeDay, setActiveDay] = useState<string | null>(null);
 
@@ -41,6 +42,26 @@ const AppContent: React.FC = () => {
     mediaQuery.addEventListener('change', applyTheme);
     return () => mediaQuery.removeEventListener('change', applyTheme);
   }, [settings.display.theme]);
+
+  // Handle URL params for widget view and shortcut actions on initial load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    const action = params.get('action');
+
+    if (view === 'widget') {
+        setPage('widget');
+    }
+    
+    if (action === 'clock-in' || action === 'clock-out') {
+        if(isAuthenticated && !dataLoading){
+            performClockAction().then(() => {
+                // Clean up URL to prevent re-triggering on refresh
+                window.history.replaceState({}, document.title, window.location.pathname);
+            });
+        }
+    }
+  }, [isAuthenticated, dataLoading, performClockAction]);
 
 
   const handleNavigate = (newPage: Page) => {
@@ -75,6 +96,8 @@ const AppContent: React.FC = () => {
         return <SettingsPage />;
       case 'absence':
         return <AbsencePage />;
+      case 'widget':
+        return <WidgetPage />;
        case 'dayDetail':
         return activeDay ? <DayDetailPage date={activeDay} onBack={() => setPage('history')} onChangeDate={handleChangeDay} /> : <HistoryPage onSelectDay={handleSelectDay} />;
       default:
@@ -92,6 +115,10 @@ const AppContent: React.FC = () => {
 
   if (!isAuthenticated) {
     return <AuthPage />;
+  }
+  
+  if (page === 'widget') {
+    return renderPage();
   }
 
   return (

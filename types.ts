@@ -1,4 +1,5 @@
-export type Page = 'home' | 'history' | 'calendar' | 'absence' | 'settings' | 'dayDetail';
+
+export type Page = 'home' | 'history' | 'calendar' | 'absence' | 'settings' | 'dayDetail' | 'widget';
 
 export type AbsenceType = 'Congés payés' | 'RTT' | 'Jour férié' | 'Maladie' | 'Autre';
 
@@ -31,6 +32,7 @@ export interface Settings {
   yearStartDate: { month: number; day: number };
   initialBalance: number;
   rttEquivalent: number;
+  nfcEnabled: boolean;
   display: {
     theme: 'light' | 'dark' | 'system';
     startOfWeek: 'sunday' | 'monday';

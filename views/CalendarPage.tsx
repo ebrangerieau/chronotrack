@@ -1,6 +1,7 @@
 
 
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { getMonthDays, dateToISODateString, formatSimpleDuration, formatDuration } from '../utils/dateUtils';
 import Icon from '../components/Icon';
@@ -17,10 +18,86 @@ const StatCard: React.FC<{label: string, value: string, valueColor?: string}> = 
     </div>
 );
 
+// New component for the PDF report structure. It's only for layout and will be hidden in the UI.
+const MonthlyReportPDF: React.FC<{ monthInfo: DayInfo[], monthlyStats: any, monthName: string }> = ({ monthInfo, monthlyStats, monthName }) => {
+    
+    const toDecimalHours = (minutes: number) => (minutes / 60).toFixed(2);
+
+    return (
+        <div>
+            <header>
+                <h1>Récapitulatif d'Activité Mensuel</h1>
+                <h2>{monthName}</h2>
+            </header>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Jour</th>
+                        <th>Pointages</th>
+                        <th>Travaillé</th>
+                        <th>Théorique</th>
+                        <th>Solde</th>
+                        <th>Absence/Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {monthInfo.map(dayInfo => {
+                        const logs = dayInfo.entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
+                        const ins = logs.filter(l => l.type === 'in');
+                        const outs = logs.filter(l => l.type === 'out');
+                        const pointages = ins.map((log, index) => `${log.time} - ${outs[index]?.time || '...'}`).join(' / ');
+
+                        let absenceType = '';
+                        if (dayInfo.absence) {
+                            absenceType = dayInfo.absence.type;
+                        } else if (dayInfo.isHoliday) {
+                            absenceType = 'Jour férié';
+                        }
+                        const note = dayInfo.entry?.note;
+
+                        return (
+                            <tr key={dayInfo.date}>
+                                <td>{new Date(dayInfo.date + 'T00:00:00').toLocaleDateString('fr-FR')}</td>
+                                <td>{new Date(dayInfo.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long' })}</td>
+                                <td>{pointages || '-'}</td>
+                                <td>{formatSimpleDuration(dayInfo.workedMinutes)}</td>
+                                <td>{formatSimpleDuration(dayInfo.theoreticalMinutes)}</td>
+                                <td>{formatDuration(dayInfo.balanceMinutes)}</td>
+                                <td>{`${absenceType}${note ? ` (${note})` : ''}`}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+
+            <table className="summary-table">
+                <tbody>
+                    <tr>
+                        <td>Total Heures Travaillées</td>
+                        <td>{toDecimalHours(monthlyStats.worked)}h ({formatSimpleDuration(monthlyStats.worked)})</td>
+                    </tr>
+                     <tr>
+                        <td>Total Heures Théoriques</td>
+                        <td>{toDecimalHours(monthlyStats.theoretical)}h ({formatSimpleDuration(monthlyStats.theoretical)})</td>
+                    </tr>
+                     <tr>
+                        <td>Solde Mensuel</td>
+                        <td>{toDecimalHours(monthlyStats.balance)}h ({formatDuration(monthlyStats.balance)})</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const { getDayInfo } = useData();
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
 
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
@@ -58,6 +135,96 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
             return newDate;
         });
     };
+    
+    const handleExportCSV = () => {
+        setIsExportMenuOpen(false);
+        const monthNameForFile = currentDate.toLocaleDateString('fr-FR', { month: 'long' });
+        const year = currentDate.getFullYear();
+        const fileName = `Recapitulatif_Heures_${monthNameForFile}_${year}.csv`;
+
+        const headers = [
+            "Date", "Jour", "Heure Arrivée 1", "Heure Départ 1", "Heure Arrivée 2", "Heure Départ 2",
+            "Temps Travaillé (h)", "Temps Théorique (h)", "Solde (h)", "Type d'absence", "Note"
+        ];
+
+        const rows = monthInfo.map(dayInfo => {
+            const date = dayInfo.date;
+            const dayOfWeek = new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long' });
+
+            const logs = dayInfo.entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
+            const ins = logs.filter(l => l.type === 'in');
+            const outs = logs.filter(l => l.type === 'out');
+
+            const arrival1 = ins[0]?.time || '';
+            const departure1 = outs[0]?.time || '';
+            const arrival2 = ins[1]?.time || '';
+            const departure2 = outs[1]?.time || '';
+
+            const toDecimalHours = (minutes: number) => (minutes / 60).toFixed(2);
+
+            const workedHours = toDecimalHours(dayInfo.workedMinutes);
+            const theoreticalHours = toDecimalHours(dayInfo.theoreticalMinutes);
+            const balanceHours = toDecimalHours(dayInfo.balanceMinutes);
+
+            let absenceType = '';
+            if (dayInfo.absence) {
+                absenceType = dayInfo.absence.type;
+            } else if (dayInfo.isHoliday) {
+                absenceType = 'Jour férié';
+            }
+
+            const note = dayInfo.entry?.note?.replace(/"/g, '""') || '';
+
+            return [
+                date, `"${dayOfWeek}"`, arrival1, departure1, arrival2, departure2,
+                workedHours, theoreticalHours, balanceHours, `"${absenceType}"`, `"${note}"`
+            ].join(',');
+        });
+        
+        const summaryHeader = ["", "", "", "", "", "Total travaillé (h)", "Total théorique (h)", "Solde mensuel (h)"].join(',');
+        const summaryValues = [
+             "", "", "", "", "",
+            (monthlyStats.worked / 60).toFixed(2),
+            (monthlyStats.theoretical / 60).toFixed(2),
+            (monthlyStats.balance / 60).toFixed(2)
+        ].join(',');
+
+        const csvContent = [
+            headers.join(','),
+            ...rows,
+            "", 
+            summaryHeader,
+            summaryValues
+        ].join('\n');
+
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
+
+    const handleExportPDF = () => {
+        setIsExportMenuOpen(false);
+        window.print();
+    };
+    
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setIsExportMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
 
     const getDayColor = (dayInfo: DayInfo) => {
         if (dayInfo.absence) {
@@ -71,10 +238,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
         }
         if (dayInfo.workedMinutes > 0) {
             if (dayInfo.balanceMinutes >= 0) return 'bg-positive text-white';
-            return 'bg-orange-400 text-white'; // Partial day or negative balance
+            return 'bg-orange-400 text-white';
         }
         if(new Date(dayInfo.date) < new Date(dateToISODateString(new Date()))){
-            return 'bg-negative text-white'; // Not worked
+            return 'bg-negative text-white';
         }
         return 'bg-card-light dark:bg-card-dark';
     };
@@ -82,13 +249,26 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
     return (
         <div className="p-4">
             <div className="flex items-center justify-between pb-4">
-                <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <Icon name="chevron_left" />
-                </button>
-                <h2 className="text-lg font-bold">{monthName}</h2>
-                <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <Icon name="chevron_right" />
-                </button>
+                <div className="flex-1 flex justify-start">
+                    <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <Icon name="chevron_left" />
+                    </button>
+                </div>
+                <h2 className="text-lg font-bold text-center">{monthName}</h2>
+                <div className="flex-1 flex justify-end items-center relative" ref={exportMenuRef}>
+                     <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <Icon name="chevron_right" />
+                    </button>
+                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="Options d'exportation">
+                        <Icon name="download" />
+                    </button>
+                     {isExportMenuOpen && (
+                        <div className="absolute top-10 right-0 z-20 w-48 bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark rounded-lg shadow-lg">
+                            <button onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg">Exporter en CSV</button>
+                            <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg">Exporter en PDF</button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-text-subtle-light dark:text-text-subtle-dark mb-2">
@@ -123,6 +303,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ onSelectDay }) => {
                     <LegendItem color="bg-warning" label="Férié" />
                     <LegendItem color="bg-gray-200 dark:bg-gray-700" label="Weekend" />
                 </div>
+            </div>
+            
+            {/* The PDF report component is rendered here but hidden by default via CSS. It becomes visible only for printing. */}
+            <div id="pdf-report-container" style={{ display: 'none' }}>
+                <MonthlyReportPDF monthInfo={monthInfo} monthlyStats={monthlyStats} monthName={monthName} />
             </div>
         </div>
     );

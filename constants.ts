@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: Settings = {
   yearStartDate: { month: 9, day: 1 },
   initialBalance: 0,
   rttEquivalent: 7.5, // 7h30m
+  nfcEnabled: false,
   display: {
     theme: 'system',
     startOfWeek: 'monday',
@@ -24,9 +25,7 @@ export const DEFAULT_SCHEDULE: WorkSchedule = {
   sunday:    { start1: null, end1: null, start2: null, end2: null }, // Repos
 };
 
-// Jours fériés en France (métropolitaine)
 export const PUBLIC_HOLIDAYS_FR: { date: string, name: string }[] = [
-    // 2024
     { date: '2024-01-01', name: 'Jour de l\'An' },
     { date: '2024-04-01', name: 'Lundi de Pâques' },
     { date: '2024-05-01', name: 'Fête du Travail' },
@@ -38,7 +37,6 @@ export const PUBLIC_HOLIDAYS_FR: { date: string, name: string }[] = [
     { date: '2024-11-01', name: 'Toussaint' },
     { date: '2024-11-11', name: 'Armistice 1918' },
     { date: '2024-12-25', name: 'Noël' },
-    // 2025
     { date: '2025-01-01', name: 'Jour de l\'An' },
     { date: '2025-04-21', name: 'Lundi de Pâques' },
     { date: '2025-05-01', name: 'Fête du Travail' },
@@ -50,16 +48,4 @@ export const PUBLIC_HOLIDAYS_FR: { date: string, name: string }[] = [
     { date: '2025-11-01', name: 'Toussaint' },
     { date: '2025-11-11', name: 'Armistice 1918' },
     { date: '2025-12-25', name: 'Noël' },
-     // 2026
-    { date: '2026-01-01', name: 'Jour de l\'An' },
-    { date: '2026-04-06', name: 'Lundi de Pâques' },
-    { date: '2026-05-01', name: 'Fête du Travail' },
-    { date: '2026-05-08', name: 'Victoire 1945' },
-    { date: '2026-05-14', name: 'Ascension' },
-    { date: '2026-05-25', name: 'Lundi de Pentecôte' },
-    { date: '2026-07-14', name: 'Fête Nationale' },
-    { date: '2026-08-15', name: 'Assomption' },
-    { date: '2026-11-01', name: 'Toussaint' },
-    { date: '2026-11-11', name: 'Armistice 1918' },
-    { date: '2026-12-25', name: 'Noël' },
 ];

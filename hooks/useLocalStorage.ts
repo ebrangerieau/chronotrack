@@ -1,4 +1,4 @@
-// FIX: Import `React` to make the `React` namespace available for type annotations.
+// FIX: Removed obsolete comment.
 import React, { useState, useEffect } from 'react';
 
 function useLocalStorage<T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {

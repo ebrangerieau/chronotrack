@@ -64,6 +64,78 @@
       .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
+      
+      @media print {
+        @page {
+          size: A4;
+          margin: 1.5cm;
+        }
+
+        body, html {
+          background-color: #fff !important;
+          color: #000 !important;
+        }
+        
+        /* Cacher toute l'application par défaut lors de l'impression */
+        body * {
+          visibility: hidden;
+        }
+
+        /* Rendre le conteneur du rapport et tous ses enfants visibles */
+        #pdf-report-container, #pdf-report-container * {
+          visibility: visible;
+        }
+        
+        /* Positionner le rapport en haut de la page pour qu'il soit le seul élément imprimable */
+        #pdf-report-container {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          font-family: Inter, sans-serif;
+        }
+        
+        #pdf-report-container table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 9pt;
+        }
+
+        #pdf-report-container th,
+        #pdf-report-container td {
+          border: 1px solid #ddd;
+          padding: 8px;
+          text-align: left;
+        }
+
+        #pdf-report-container th {
+          background-color: #f2f2f2;
+          font-weight: 600;
+        }
+
+        #pdf-report-container h1 {
+          font-size: 18pt;
+          margin-bottom: 0.5rem;
+        }
+        
+        #pdf-report-container h2 {
+           font-size: 14pt;
+           margin-bottom: 1.5rem;
+           color: #555;
+           font-weight: 500;
+        }
+
+        #pdf-report-container .summary-table {
+          margin-top: 2rem;
+          width: 50%;
+          margin-left: auto;
+          font-size: 10pt;
+        }
+        
+        #pdf-report-container .summary-table td:first-child {
+          font-weight: 600;
+        }
+      }
     </style>
   <script type="importmap">
 {
@@ -84,7 +156,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
+          navigator.serviceWorker.register('sw.js').then(registration => {
             console.log('SW registered: ', registration);
           }).catch(registrationError => {
             console.log('SW registration failed: ', registrationError);

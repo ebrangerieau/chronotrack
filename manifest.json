@@ -20,5 +20,21 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Arrivée",
+      "short_name": "Arrivée",
+      "description": "Pointer une nouvelle arrivée",
+      "url": "/?action=clock-in",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Départ",
+      "short_name": "Départ",
+      "description": "Pointer un départ",
+      "url": "/?action=clock-out",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

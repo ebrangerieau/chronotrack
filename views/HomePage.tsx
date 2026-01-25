@@ -1,31 +1,70 @@
-import React from 'react';
+
+import React, { useMemo, useEffect, useState } from 'react';
 import Icon from '../components/Icon';
 import { useTime } from '../hooks/useTime';
 import { useData } from '../contexts/DataContext';
-import { formatTime, formatDuration, getTodayDateString, formatSimpleDuration, timeStringToMinutes } from '../utils/dateUtils';
-import { TimeLog } from '../types';
+import { formatDuration, getTodayDateString, formatSimpleDuration, timeStringToMinutes, getDayOfWeek } from '../utils/dateUtils';
+import { WeekDay } from '../types';
 
 const HomePage: React.FC = () => {
   const time = useTime();
-  const { getDayInfo, addOrUpdateTimeEntry, getAnnualBalance } = useData();
+  const { getDayInfo, performClockAction, closeMissedPunch, historicalBalance, timeEntries, schedule, settings } = useData();
   const todayDateString = getTodayDateString();
+  const [nfcStatus, setNfcStatus] = useState<'idle' | 'listening' | 'error' | 'unsupported'>('idle');
 
   const initialTodayInfo = getDayInfo(todayDateString);
   const logs = initialTodayInfo.entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
-  const handleClock = () => {
-    const nextLogType = !lastLog || lastLog.type === 'out' ? 'in' : 'out';
-    const newLog: TimeLog = {
-      id: Date.now().toString(),
-      time: formatTime(new Date()),
-      type: nextLogType,
-    };
-    addOrUpdateTimeEntry({
-      date: todayDateString,
-      logs: [...logs, newLog],
+  // Assistant de Rattrapage : Détection de sessions oubliées
+  const missedPunch = useMemo(() => {
+    const entry = timeEntries.find(entry => {
+      if (entry.date === todayDateString) return false;
+      const entryLogs = entry.logs || [];
+      if (entryLogs.length === 0) return false;
+      const lastEntryLog = [...entryLogs].sort((a, b) => a.time.localeCompare(b.time)).pop();
+      return lastEntryLog?.type === 'in';
     });
-  };
+
+    if (!entry) return null;
+
+    // Calculer l'heure de fin suggérée basée sur le planning
+    const dayIdx = getDayOfWeek(entry.date);
+    const dayNames: WeekDay[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[dayIdx];
+    const plannedEnd = schedule[dayName].end2 || schedule[dayName].end1 || '18:00';
+
+    return { entry, suggestedEnd: plannedEnd };
+  }, [timeEntries, todayDateString, schedule]);
+
+  // Support Web NFC
+  useEffect(() => {
+    if (!settings.nfcEnabled) return;
+    if (!('NDEFReader' in window)) {
+        setNfcStatus('unsupported');
+        return;
+    }
+
+    let controller = new AbortController();
+    const startNfc = async () => {
+        try {
+            const ndef = new (window as any).NDEFReader();
+            await ndef.scan({ signal: controller.signal });
+            setNfcStatus('listening');
+            ndef.onreading = (event: any) => {
+                console.log("NFC Tag detected!");
+                if (window.navigator.vibrate) window.navigator.vibrate(100);
+                performClockAction();
+            };
+        } catch (error) {
+            console.error("NFC Error:", error);
+            setNfcStatus('error');
+        }
+    };
+
+    startNfc();
+    return () => controller.abort();
+  }, [settings.nfcEnabled, performClockAction]);
 
   let runningMinutes = 0;
   if (lastLog && lastLog.type === 'in') {
@@ -36,12 +75,10 @@ const HomePage: React.FC = () => {
       }
   }
 
-  // Get live data by passing runningMinutes to context functions
   const todayInfoLive = getDayInfo(todayDateString, runningMinutes);
-  const annualBalanceLive = getAnnualBalance(runningMinutes);
+  const annualBalanceLive = historicalBalance + todayInfoLive.balanceMinutes;
 
   const isClockedIn = lastLog?.type === 'in';
-  const mainButtonAction = handleClock;
   const mainButtonText = isClockedIn ? 'DÉPART' : 'ARRIVÉE';
   const mainButtonIcon = isClockedIn ? 'logout' : 'login';
   const firstLog = logs.find(log => log.type === 'in');
@@ -53,10 +90,46 @@ const HomePage: React.FC = () => {
           <Icon name="track_changes" className="text-3xl text-primary" />
         </div>
         <h2 className="flex-1 text-center text-lg font-bold">ChronoTrack</h2>
-        <div className="flex w-12 items-center justify-end"></div>
+        <div className="flex w-12 items-center justify-end">
+            {settings.nfcEnabled && (
+                <Icon name={nfcStatus === 'listening' ? 'nfc' : 'nfc_off'} 
+                      className={`text-xl ${nfcStatus === 'listening' ? 'text-primary animate-pulse' : 'text-text-subtle-light'}`} 
+                />
+            )}
+        </div>
       </header>
 
       <main className="flex-grow px-4 pb-8 pt-4">
+        {missedPunch && (
+          <div className="mb-6 overflow-hidden rounded-2xl bg-warning/10 border border-warning/30 p-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-start gap-3">
+                <div className="p-2 bg-warning/20 rounded-full">
+                    <Icon name="history_toggle_off" className="text-warning text-xl" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-text-light dark:text-text-dark">Oubli de pointage</p>
+                  <p className="text-xs text-text-subtle-light dark:text-text-subtle-dark mt-1">
+                    La session du {new Date(missedPunch.entry.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })} n'a pas été fermée.
+                  </p>
+                </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+                <button 
+                    onClick={() => closeMissedPunch(missedPunch.entry.date, missedPunch.suggestedEnd)}
+                    className="flex-1 py-2 px-3 bg-warning text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
+                >
+                    Clore à {missedPunch.suggestedEnd}
+                </button>
+                <button 
+                    className="py-2 px-4 bg-gray-200 dark:bg-gray-700 rounded-lg text-xs font-semibold"
+                    onClick={() => {/* Trigger manual edit */}}
+                >
+                    Modifier
+                </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col items-center justify-center py-6">
           <h1 className="font-monospace text-5xl font-bold tracking-tighter">
             {time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -68,8 +141,9 @@ const HomePage: React.FC = () => {
 
         <div className="flex justify-center px-4 py-6">
           <button
-            onClick={mainButtonAction}
-            className="flex flex-1 cursor-pointer items-center justify-center gap-3 overflow-hidden rounded-full h-16 min-w-[84px] max-w-[480px] bg-primary px-8 text-lg font-bold tracking-[0.015em] text-text-light shadow-lg shadow-primary/20 transition-all hover:bg-opacity-90 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none"
+            onClick={performClockAction}
+            className={`flex flex-1 cursor-pointer items-center justify-center gap-3 overflow-hidden rounded-full h-16 min-w-[84px] max-w-[480px] px-8 text-lg font-bold tracking-[0.015em] text-text-light shadow-lg transition-all active:scale-95
+                        ${isClockedIn ? 'bg-negative shadow-negative/20' : 'bg-primary shadow-primary/20'}`}
           >
             <Icon name={mainButtonIcon} />
             <span className="truncate">{mainButtonText}</span>
@@ -86,10 +160,16 @@ const HomePage: React.FC = () => {
         <div className="space-y-4 pt-6">
           <div className="rounded-xl border border-border-light dark:border-border-dark bg-card-light dark:bg-card-dark p-5">
             <h3 className="mb-4 text-lg font-bold">Aujourd'hui</h3>
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-4 gap-4 text-center">
               <div>
                 <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Arrivée</p>
                 <p className="font-monospace text-base font-bold">{firstLog?.time || '--:--'}</p>
+              </div>
+               <div>
+                <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Prévu</p>
+                <p className="font-monospace text-base font-bold">
+                    {formatSimpleDuration(todayInfoLive.theoreticalMinutes)}
+                </p>
               </div>
               <div>
                 <p className="mb-1 text-xs font-medium text-text-subtle-light dark:text-text-subtle-dark">Travaillé</p>
@@ -104,21 +184,6 @@ const HomePage: React.FC = () => {
                 </p>
               </div>
             </div>
-            {logs.length > 0 && (
-              <div className="mt-4 border-t border-border-light dark:border-border-dark pt-4">
-                <h4 className="text-sm font-medium text-text-subtle-light dark:text-text-subtle-dark mb-2">Pointages du jour</h4>
-                <ul className="space-y-2">
-                  {logs.map(log => (
-                    <li key={log.id} className="flex justify-between items-center text-sm">
-                      <span className={`font-medium ${log.type === 'in' ? 'text-positive' : 'text-negative'}`}>
-                        {log.type === 'in' ? 'Arrivée' : 'Départ'}
-                      </span>
-                      <span className="font-monospace font-bold">{log.time}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
       </main>
