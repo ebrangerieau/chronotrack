@@ -18,12 +18,13 @@ const weekDayLabels: Record<WeekDay, string> = {
 const WEEK_DAYS_ORDER: WeekDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 const SettingsPage: React.FC = () => {
-    const { settings, updateSettings, schedule, updateSchedule, importTimeEntries } = useData();
+    const { settings, updateSettings, schedule, updateSchedule } = useData();
     const { logout } = useAuth();
     const [localSettings, setLocalSettings] = useState(settings);
     const [localSchedule, setLocalSchedule] = useState(schedule);
     const [nfcWriting, setNfcWriting] = useState(false);
     const [nfcWriteStatus, setNfcWriteStatus] = useState<string | null>(null);
+    const [geoStatus, setGeoStatus] = useState<string | null>(null);
 
     const handleSettingChange = (field: keyof Settings, value: any) => {
         setLocalSettings(prev => ({ ...prev, [field]: value }));
@@ -38,22 +39,47 @@ const SettingsPage: React.FC = () => {
         updateSchedule(localSchedule);
     };
 
+    const toggleNotifications = async (enabled: boolean) => {
+        if (enabled && 'Notification' in window) {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                handleSettingChange('notificationsEnabled', true);
+            } else {
+                alert("Permission de notification refusée.");
+                handleSettingChange('notificationsEnabled', false);
+            }
+        } else {
+            handleSettingChange('notificationsEnabled', enabled);
+        }
+    };
+
+    const calibrateWorkLocation = () => {
+        setGeoStatus("Localisation en cours...");
+        navigator.geolocation.getCurrentPosition((pos) => {
+            handleSettingChange('workLocation', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+            setGeoStatus("Position du bureau enregistrée !");
+            setTimeout(() => setGeoStatus(null), 3000);
+        }, (err) => {
+            setGeoStatus("Erreur : " + err.message);
+            setTimeout(() => setGeoStatus(null), 3000);
+        });
+    };
+
     const handleWriteNfc = async () => {
         if (!('NDEFReader' in window)) {
-            setNfcWriteStatus("NFC non supporté sur ce navigateur.");
+            setNfcWriteStatus("NFC non supporté.");
             return;
         }
         
         try {
             setNfcWriting(true);
-            setNfcWriteStatus("Approchez le tag NFC...");
+            setNfcWriteStatus("Approchez le tag...");
             const ndef = new (window as any).NDEFReader();
             await ndef.write("chronotrack-clock-action");
-            setNfcWriteStatus("Tag écrit avec succès !");
+            setNfcWriteStatus("Succès !");
             if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
         } catch (error) {
-            console.error(error);
-            setNfcWriteStatus("Erreur lors de l'écriture.");
+            setNfcWriteStatus("Erreur d'écriture.");
         } finally {
             setNfcWriting(false);
             setTimeout(() => setNfcWriteStatus(null), 3000);
@@ -67,14 +93,14 @@ const SettingsPage: React.FC = () => {
             </header>
 
             <main className="flex flex-col p-4 gap-6">
-                <Accordion title="Mes horaires" icon="schedule" defaultOpen>
+                <Accordion title="Mes horaires" icon="schedule">
                     <div className="flex flex-col gap-4 px-4 pb-4">
                         {WEEK_DAYS_ORDER.map((day) => (
                              <div key={day}>
                                 <p className="font-semibold mb-2 text-sm">{weekDayLabels[day]}</p>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input type="time" value={localSchedule[day].start1 || ''} onChange={e => updateSchedule({...localSchedule, [day]: {...localSchedule[day], start1: e.target.value}})} className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-sm p-1.5" />
-                                    <input type="time" value={localSchedule[day].end2 || localSchedule[day].end1 || ''} onChange={e => updateSchedule({...localSchedule, [day]: {...localSchedule[day], end2: e.target.value}})} className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-sm p-1.5" />
+                                    <input type="time" value={localSchedule[day].start1 || ''} onChange={e => setLocalSchedule({...localSchedule, [day]: {...localSchedule[day], start1: e.target.value}})} className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-sm p-1.5" />
+                                    <input type="time" value={localSchedule[day].end2 || localSchedule[day].end1 || ''} onChange={e => setLocalSchedule({...localSchedule, [day]: {...localSchedule[day], end2: e.target.value}})} className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-sm p-1.5" />
                                 </div>
                              </div>
                         ))}
@@ -83,43 +109,77 @@ const SettingsPage: React.FC = () => {
 
                 <Accordion title="Automatisations" icon="auto_fix_high" defaultOpen>
                     <div className="flex flex-col gap-4 px-4 pb-4">
-                        <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/20">
+                        {/* Notifications */}
+                        <div className="flex items-center justify-between p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
                             <div className="flex items-center gap-3">
-                                <Icon name="nfc" className="text-primary text-2xl" />
+                                <Icon name="notifications_active" className="text-blue-500 text-2xl" />
                                 <div>
-                                    <p className="text-sm font-bold">Pointage NFC</p>
-                                    <p className="text-xs text-text-subtle-light dark:text-text-subtle-dark">Pointer en passant le téléphone</p>
+                                    <p className="text-sm font-bold">Rappels de pointage</p>
+                                    <p className="text-xs text-text-subtle-light">Oubli d'arrivée ou départ</p>
                                 </div>
                             </div>
                             <input 
                                 type="checkbox" 
-                                checked={localSettings.nfcEnabled} 
-                                onChange={e => handleSettingChange('nfcEnabled', e.target.checked)}
-                                className="size-6 rounded border-border-light text-primary focus:ring-primary"
+                                checked={localSettings.notificationsEnabled} 
+                                onChange={e => toggleNotifications(e.target.checked)}
+                                className="size-6 rounded text-blue-500 focus:ring-blue-500"
                             />
                         </div>
 
-                        {localSettings.nfcEnabled && (
-                            <div className="p-4 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl">
-                                <p className="text-xs font-medium mb-3">Utilitaire de Tag</p>
+                        {/* Geofencing */}
+                        <div className="flex flex-col gap-3 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Icon name="location_on" className="text-emerald-500 text-2xl" />
+                                    <div>
+                                        <p className="text-sm font-bold">Geofencing (Beta)</p>
+                                        <p className="text-xs text-text-subtle-light">Détection automatique du bureau</p>
+                                    </div>
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    checked={localSettings.geofencingEnabled} 
+                                    onChange={e => handleSettingChange('geofencingEnabled', e.target.checked)}
+                                    className="size-6 rounded text-emerald-500 focus:ring-emerald-500"
+                                />
+                            </div>
+                            {localSettings.geofencingEnabled && (
+                                <button 
+                                    onClick={calibrateWorkLocation}
+                                    className="mt-2 py-2 px-3 bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-sm"
+                                >
+                                    {geoStatus || (localSettings.workLocation ? "Recalibrer ma position" : "Définir ma position de travail")}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* NFC */}
+                        <div className="flex flex-col gap-3 p-4 bg-primary/5 rounded-xl border border-primary/20">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Icon name="nfc" className="text-primary text-2xl" />
+                                    <div>
+                                        <p className="text-sm font-bold">Tag NFC</p>
+                                        <p className="text-xs text-text-subtle-light">Pointage par contact physique</p>
+                                    </div>
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    checked={localSettings.nfcEnabled} 
+                                    onChange={e => handleSettingChange('nfcEnabled', e.target.checked)}
+                                    className="size-6 rounded text-primary focus:ring-primary"
+                                />
+                            </div>
+                            {localSettings.nfcEnabled && (
                                 <button 
                                     onClick={handleWriteNfc}
                                     disabled={nfcWriting}
-                                    className="w-full py-3 px-4 bg-primary text-text-light font-bold rounded-lg shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    className="mt-2 py-2 px-3 bg-primary text-text-light font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 text-xs"
                                 >
-                                    {nfcWriting ? <Icon name="sync" className="animate-spin" /> : <Icon name="edit_square" />}
-                                    {nfcWriteStatus || "Préparer un Tag NFC"}
+                                    {nfcWriting ? <Icon name="sync" className="animate-spin text-sm" /> : <Icon name="edit_square" className="text-sm" />}
+                                    {nfcWriteStatus || "Préparer un nouveau Tag"}
                                 </button>
-                                <p className="text-[10px] text-text-subtle-light mt-2 text-center">Nécessite un tag NFC vierge type NTAG213/215/216.</p>
-                            </div>
-                        )}
-                        
-                        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
-                             <div className="flex items-center gap-3 mb-2 text-orange-800 dark:text-orange-200">
-                                <Icon name="psychology" className="text-xl" />
-                                <p className="text-sm font-bold">Assistant de Rattrapage</p>
-                            </div>
-                            <p className="text-xs text-orange-700 dark:text-orange-300">Cette fonctionnalité est toujours active et vous proposera de clore vos sessions oubliées sur l'écran d'accueil.</p>
+                            )}
                         </div>
                     </div>
                 </Accordion>

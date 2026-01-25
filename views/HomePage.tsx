@@ -11,12 +11,13 @@ const HomePage: React.FC = () => {
   const { getDayInfo, performClockAction, closeMissedPunch, historicalBalance, timeEntries, schedule, settings } = useData();
   const todayDateString = getTodayDateString();
   const [nfcStatus, setNfcStatus] = useState<'idle' | 'listening' | 'error' | 'unsupported'>('idle');
+  const [isAtWork, setIsAtWork] = useState<boolean | null>(null);
 
   const initialTodayInfo = getDayInfo(todayDateString);
   const logs = initialTodayInfo.entry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
-  // Assistant de Rattrapage : Détection de sessions oubliées
+  // Assistant de Rattrapage : Détection de sessions oubliées sur les 7 derniers jours
   const missedPunch = useMemo(() => {
     const entry = timeEntries.find(entry => {
       if (entry.date === todayDateString) return false;
@@ -28,7 +29,6 @@ const HomePage: React.FC = () => {
 
     if (!entry) return null;
 
-    // Calculer l'heure de fin suggérée basée sur le planning
     const dayIdx = getDayOfWeek(entry.date);
     const dayNames: WeekDay[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayName = dayNames[dayIdx];
@@ -36,6 +36,39 @@ const HomePage: React.FC = () => {
 
     return { entry, suggestedEnd: plannedEnd };
   }, [timeEntries, todayDateString, schedule]);
+
+  // Support Geofencing : Vérification de la position
+  useEffect(() => {
+    if (!settings.geofencingEnabled || !settings.workLocation) {
+        setIsAtWork(null);
+        return;
+    }
+
+    const checkLocation = () => {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const R = 6371e3; // Rayon de la terre
+            const φ1 = pos.coords.latitude * Math.PI/180;
+            const φ2 = settings.workLocation!.lat * Math.PI/180;
+            const Δφ = (settings.workLocation!.lat - pos.coords.latitude) * Math.PI/180;
+            const Δλ = (settings.workLocation!.lng - pos.coords.longitude) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const d = R * c; // Distance en mètres
+
+            setIsAtWork(d < 100); // Seuil de 100 mètres
+        }, (err) => {
+            console.error("Geofencing error:", err);
+            setIsAtWork(null);
+        });
+    };
+
+    checkLocation();
+    const interval = setInterval(checkLocation, 60000); // Vérifier toutes les minutes
+    return () => clearInterval(interval);
+  }, [settings.geofencingEnabled, settings.workLocation]);
 
   // Support Web NFC
   useEffect(() => {
@@ -52,12 +85,10 @@ const HomePage: React.FC = () => {
             await ndef.scan({ signal: controller.signal });
             setNfcStatus('listening');
             ndef.onreading = (event: any) => {
-                console.log("NFC Tag detected!");
                 if (window.navigator.vibrate) window.navigator.vibrate(100);
                 performClockAction();
             };
         } catch (error) {
-            console.error("NFC Error:", error);
             setNfcStatus('error');
         }
     };
@@ -89,7 +120,17 @@ const HomePage: React.FC = () => {
         <div className="flex size-12 shrink-0 items-center justify-start">
           <Icon name="track_changes" className="text-3xl text-primary" />
         </div>
-        <h2 className="flex-1 text-center text-lg font-bold">ChronoTrack</h2>
+        <div className="flex-1 flex flex-col items-center">
+            <h2 className="text-lg font-bold">ChronoTrack</h2>
+            {settings.geofencingEnabled && isAtWork !== null && (
+                <div className="flex items-center gap-1">
+                    <div className={`size-2 rounded-full ${isAtWork ? 'bg-positive animate-pulse' : 'bg-text-subtle-light'}`}></div>
+                    <span className="text-[10px] font-medium text-text-subtle-light uppercase tracking-widest">
+                        {isAtWork ? 'Au bureau' : 'Extérieur'}
+                    </span>
+                </div>
+            )}
+        </div>
         <div className="flex w-12 items-center justify-end">
             {settings.nfcEnabled && (
                 <Icon name={nfcStatus === 'listening' ? 'nfc' : 'nfc_off'} 
@@ -101,30 +142,30 @@ const HomePage: React.FC = () => {
 
       <main className="flex-grow px-4 pb-8 pt-4">
         {missedPunch && (
-          <div className="mb-6 overflow-hidden rounded-2xl bg-warning/10 border border-warning/30 p-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="mb-6 overflow-hidden rounded-2xl bg-orange-100 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="flex items-start gap-3">
-                <div className="p-2 bg-warning/20 rounded-full">
-                    <Icon name="history_toggle_off" className="text-warning text-xl" />
+                <div className="p-2 bg-orange-200 dark:bg-orange-800/40 rounded-full">
+                    <Icon name="history_toggle_off" className="text-orange-600 dark:text-orange-400 text-xl" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-text-light dark:text-text-dark">Oubli de pointage</p>
-                  <p className="text-xs text-text-subtle-light dark:text-text-subtle-dark mt-1">
-                    La session du {new Date(missedPunch.entry.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })} n'a pas été fermée.
+                  <p className="text-sm font-bold text-orange-900 dark:text-orange-100">Oubli détecté</p>
+                  <p className="text-xs text-orange-800 dark:text-orange-200 mt-1">
+                    Pointage du {new Date(missedPunch.entry.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })} non fermé.
                   </p>
                 </div>
             </div>
             <div className="mt-4 flex gap-2">
                 <button 
                     onClick={() => closeMissedPunch(missedPunch.entry.date, missedPunch.suggestedEnd)}
-                    className="flex-1 py-2 px-3 bg-warning text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
+                    className="flex-1 py-2 px-3 bg-orange-500 text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
                 >
                     Clore à {missedPunch.suggestedEnd}
                 </button>
                 <button 
                     className="py-2 px-4 bg-gray-200 dark:bg-gray-700 rounded-lg text-xs font-semibold"
-                    onClick={() => {/* Trigger manual edit */}}
+                    onClick={() => {/* Ici on pourrait naviguer vers le détail du jour */}}
                 >
-                    Modifier
+                    Détails
                 </button>
             </div>
           </div>

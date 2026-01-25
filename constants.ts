@@ -9,6 +9,8 @@ export const DEFAULT_SETTINGS: Settings = {
   initialBalance: 0,
   rttEquivalent: 7.5, // 7h30m
   nfcEnabled: false,
+  notificationsEnabled: false,
+  geofencingEnabled: false,
   display: {
     theme: 'system',
     startOfWeek: 'monday',

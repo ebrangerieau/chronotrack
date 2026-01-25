@@ -33,6 +33,9 @@ export interface Settings {
   initialBalance: number;
   rttEquivalent: number;
   nfcEnabled: boolean;
+  notificationsEnabled: boolean;
+  geofencingEnabled: boolean;
+  workLocation?: { lat: number; lng: number };
   display: {
     theme: 'light' | 'dark' | 'system';
     startOfWeek: 'sunday' | 'monday';
