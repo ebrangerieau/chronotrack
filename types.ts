@@ -33,6 +33,7 @@ export interface Settings {
   initialBalance: number;
   rttEquivalent: number;
   nfcEnabled: boolean;
+  nfcConfirmRequired: boolean;
   notificationsEnabled: boolean;
   geofencingEnabled: boolean;
   workLocation?: { lat: number; lng: number };

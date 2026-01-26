@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   initialBalance: 0,
   rttEquivalent: 7.5, // 7h30m
   nfcEnabled: false,
+  nfcConfirmRequired: true,
   notificationsEnabled: false,
   geofencingEnabled: false,
   display: {

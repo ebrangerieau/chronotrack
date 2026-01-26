@@ -30,10 +30,6 @@ const SettingsPage: React.FC = () => {
         setLocalSettings(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleDisplayChange = (field: keyof Settings['display'], value: any) => {
-         setLocalSettings(prev => ({ ...prev, display: { ...prev.display, [field]: value } }));
-    }
-
     const handleSave = () => {
         updateSettings(localSettings);
         updateSchedule(localSchedule);
@@ -89,7 +85,7 @@ const SettingsPage: React.FC = () => {
     return (
         <div className="pb-24">
             <header className="flex items-center p-4 pb-3 sticky top-0 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm z-10 border-b border-border-light dark:border-border-dark">
-                <h1 className="text-xl font-bold leading-tight flex-1 text-center">Réglages</h1>
+                <h1 className="text-xl font-bold leading-tight flex-1 text-center text-text-light dark:text-text-dark">Réglages</h1>
             </header>
 
             <main className="flex flex-col p-4 gap-6">
@@ -171,14 +167,25 @@ const SettingsPage: React.FC = () => {
                                 />
                             </div>
                             {localSettings.nfcEnabled && (
-                                <button 
-                                    onClick={handleWriteNfc}
-                                    disabled={nfcWriting}
-                                    className="mt-2 py-2 px-3 bg-primary text-text-light font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 text-xs"
-                                >
-                                    {nfcWriting ? <Icon name="sync" className="animate-spin text-sm" /> : <Icon name="edit_square" className="text-sm" />}
-                                    {nfcWriteStatus || "Préparer un nouveau Tag"}
-                                </button>
+                                <div className="mt-2 space-y-4">
+                                    <div className="flex items-center justify-between px-2">
+                                        <span className="text-xs font-semibold text-text-subtle-light">Confirmation manuelle</span>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={localSettings.nfcConfirmRequired} 
+                                            onChange={e => handleSettingChange('nfcConfirmRequired', e.target.checked)}
+                                            className="size-5 rounded text-primary focus:ring-primary"
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={handleWriteNfc}
+                                        disabled={nfcWriting}
+                                        className="w-full py-2 px-3 bg-primary text-text-light font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 text-xs"
+                                    >
+                                        {nfcWriting ? <Icon name="sync" className="animate-spin text-sm" /> : <Icon name="edit_square" className="text-sm" />}
+                                        {nfcWriteStatus || "Préparer un nouveau Tag"}
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -210,7 +217,7 @@ const Accordion: React.FC<{title: string, icon: string, children: React.ReactNod
                     <div className="flex items-center justify-center shrink-0 size-10 bg-primary/10 rounded-full text-primary">
                         <Icon name={icon} className="text-2xl" />
                     </div>
-                    <p className="text-base font-semibold">{title}</p>
+                    <p className="text-base font-semibold text-text-light dark:text-text-dark">{title}</p>
                 </div>
                 <Icon name="expand_more" className="text-text-subtle-light dark:text-text-subtle-dark group-open:rotate-180 transition-transform duration-300"/>
             </summary>
