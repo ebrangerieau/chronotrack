@@ -18,7 +18,9 @@ interface DataContextProps {
   absences: Absence[];
   addAbsence: (absence: Omit<Absence, 'id'>) => Promise<void>;
   getDayInfo: (date: string, liveRunningMinutes?: number) => DayInfo;
-  performClockAction: () => Promise<void>;
+  /** Sans argument, inverse l'état. Avec un type, ne pointe que si c'est le pointage attendu.
+   *  Renvoie le type enregistré, ou null si rien n'a été enregistré. */
+  performClockAction: (requestedType?: TimeLog['type']) => Promise<TimeLog['type'] | null>;
   closeMissedPunch: (date: string, time: string) => Promise<void>;
   historicalBalance: number;
   dataLoading: boolean;
@@ -32,15 +34,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [schedule, setSchedule] = useState<WorkSchedule>(DEFAULT_SCHEDULE);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
   const [historicalBalance, setHistoricalBalance] = useState(0);
+  // Uid dont les données sont en mémoire. dataLoading en est dérivé : stocké à part, il restait
+  // à false pendant le premier rendu après une connexion, avec des tableaux encore vides,
+  // et un pointage à ce moment-là (raccourci) réécrivait timeEntries avec une seule entrée.
+  const [loadedUid, setLoadedUid] = useState<string | null>(null);
+  const dataLoading = user !== null && loadedUid !== user.uid;
 
   useEffect(() => {
+    let cancelled = false;
     const loadUserData = async () => {
       if (user) {
-        setDataLoading(true);
         const userDocRef = doc(db, 'users', user.uid);
         const docSnap = await getDoc(userDocRef);
+        if (cancelled) return;
 
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -56,22 +63,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             absences: [],
           };
           await setDoc(userDocRef, initialData);
+          if (cancelled) return;
           setSettings(DEFAULT_SETTINGS);
           setSchedule(DEFAULT_SCHEDULE);
           setTimeEntries([]);
           setAbsences([]);
         }
-        setDataLoading(false);
+        setLoadedUid(user.uid);
       } else {
         setSettings(DEFAULT_SETTINGS);
         setSchedule(DEFAULT_SCHEDULE);
         setTimeEntries([]);
         setAbsences([]);
-        setDataLoading(false);
+        setLoadedUid(null);
       }
     };
 
     loadUserData();
+    return () => { cancelled = true; };
   }, [user]);
 
   const updateSettings = async (newSettings: Partial<Settings>) => {
@@ -182,17 +191,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { date: dateStr, workedMinutes: Math.round(workedMinutes), theoreticalMinutes, balanceMinutes: Math.round(balanceMinutes), entry, absence, isHoliday, isWeekend };
   }, [timeEntries, absences, settings.rttEquivalent, settings.defaultBreak, getTheoreticalMinutesForDay]);
 
-  const performClockAction = async () => {
-    if (!user) return;
+  const performClockAction = async (requestedType?: TimeLog['type']) => {
+    if (!user) return null;
     const todayDateString = getTodayDateString();
     const todayEntry = timeEntries.find(e => e.date === todayDateString);
     const logs = todayEntry?.logs?.slice().sort((a, b) => a.time.localeCompare(b.time)) || [];
     const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
     const nextLogType = !lastLog || lastLog.type === 'out' ? 'in' : 'out';
+    // « Arrivée » alors qu'on est déjà pointé ne doit pas enregistrer un départ (et inversement).
+    if (requestedType && requestedType !== nextLogType) return null;
     const newLog: TimeLog = { id: Date.now().toString(), time: formatTime(new Date()), type: nextLogType };
 
     await addOrUpdateTimeEntry({ date: todayDateString, logs: [...logs, newLog] });
+    return nextLogType;
   };
 
   const closeMissedPunch = async (date: string, time: string) => {
