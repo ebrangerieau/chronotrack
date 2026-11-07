@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DataProvider, useData } from './contexts/DataContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import HomePage from './views/HomePage';
@@ -12,14 +12,25 @@ import AuthPage from './views/AuthPage';
 import WidgetPage from './views/WidgetPage';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
-import { Page } from './types';
+import { Page, TimeLog } from './types';
 import { dateToISODateString } from './utils/dateUtils';
+
+// Raccourcis du manifeste : /?action=clock-in et /?action=clock-out
+const readShortcutAction = (): TimeLog['type'] | null => {
+  const action = new URLSearchParams(window.location.search).get('action');
+  return action === 'clock-in' ? 'in' : action === 'clock-out' ? 'out' : null;
+};
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { dataLoading, settings, performClockAction } = useData();
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>(() =>
+    new URLSearchParams(window.location.search).get('view') === 'widget' ? 'widget' : 'home'
+  );
   const [activeDay, setActiveDay] = useState<string | null>(null);
+  // Consommée une seule fois : performClockAction change d'identité à chaque pointage,
+  // l'effet qui l'exécute se relance donc et ne doit pas pointer de nouveau.
+  const pendingShortcutAction = useRef(readShortcutAction());
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -43,24 +54,19 @@ const AppContent: React.FC = () => {
     return () => mediaQuery.removeEventListener('change', applyTheme);
   }, [settings.display.theme]);
 
-  // Handle URL params for widget view and shortcut actions on initial load
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    const action = params.get('action');
+    const requested = pendingShortcutAction.current;
+    if (!requested || !isAuthenticated || dataLoading) return;
+    pendingShortcutAction.current = null;
 
-    if (view === 'widget') {
-        setPage('widget');
-    }
-    
-    if (action === 'clock-in' || action === 'clock-out') {
-        if(isAuthenticated && !dataLoading){
-            performClockAction().then(() => {
-                // Clean up URL to prevent re-triggering on refresh
-                window.history.replaceState({}, document.title, window.location.pathname);
-            });
-        }
-    }
+    // Nettoyer l'URL avant d'écrire : hors ligne, la promesse de setDoc ne se résout jamais.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('action');
+    window.history.replaceState(null, '', url);
+
+    performClockAction(requested).catch((error) => {
+      console.error('Pointage par raccourci impossible :', error);
+    });
   }, [isAuthenticated, dataLoading, performClockAction]);
 
 
